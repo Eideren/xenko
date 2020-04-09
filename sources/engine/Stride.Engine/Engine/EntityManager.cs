@@ -478,18 +478,36 @@ namespace Stride.Engine
                 }
             }
         }
-
+        
         private void CheckEntityWithProcessors(Entity entity, bool forceRemove, bool collecComponentTypesAndProcessors)
         {
             var components = entity.Components;
-            for (int i = 0; i < components.Count; i++)
+            
+            // Loading transforms forces child components to load before other parent components,
+            // we'll load transform afterward to avoid potential issues related to that.
+            EntityComponent tc = null;
+            foreach (var component in components)
             {
-                var component = components[i];
+                if (component is TransformComponent)
+                {
+                    tc = component;
+                    continue;
+                }
+
                 CheckEntityComponentWithProcessors(entity, component, forceRemove, null);
                 if (collecComponentTypesAndProcessors)
                 {
                     CollectNewProcessorsByComponentType(component.GetType().GetTypeInfo());
                 }
+            }
+            
+            if(tc == null)
+                return;
+            
+            CheckEntityComponentWithProcessors(entity, tc, forceRemove, null);
+            if (collecComponentTypesAndProcessors)
+            {
+                CollectNewProcessorsByComponentType(tc.GetType().GetTypeInfo());
             }
         }
 
