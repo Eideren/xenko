@@ -224,6 +224,30 @@ namespace Stride.Assets.Models
                         model.Meshes.Remove(mesh);
                     }
 
+                    // We're merging meshes, apply any local transformations
+                    #error This is WIP, children don't actually end up at the right transformation (looks obvious with sub-unit scaling on children),
+                    #error might be related to the other TransformBuffer operations a couple of lines above, not sure how I'm supposed to pipe all of this correctly
+                    foreach (var mesh in meshesPerDrawCall)
+                    {
+                        var n = modelSkeleton.Nodes.FirstOrDefault( x => x.Name == mesh.Name );
+                        if (n.Name != mesh.Name)
+                            continue;
+
+                        var matrix = Matrix.Identity;
+                        do
+                        {
+                            ref var trs = ref n.Transform;
+                            Matrix.Transformation(ref trs.Scale, ref trs.Rotation, ref trs.Position, out var otherMatrix);
+                            matrix = otherMatrix * matrix;
+                            if (n.ParentIndex == -1)
+                                break;
+                            n = modelSkeleton.Nodes[n.ParentIndex];
+                        } while (true);
+
+                        for (int vbIdx = 0; vbIdx < mesh.Draw.VertexBuffers.Length; vbIdx++)
+                            mesh.Draw.VertexBuffers[vbIdx].TransformBuffer(ref matrix);
+                    }
+
                     // Add new combined mesh(es)
                     var baseMesh = meshesPerDrawCall.First();
                     var newMeshList = meshesPerDrawCall.Select(x => x.Draw).ToList().GroupDrawData(Allow32BitIndex);

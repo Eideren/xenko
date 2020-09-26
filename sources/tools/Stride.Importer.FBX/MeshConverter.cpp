@@ -162,7 +162,7 @@ public:
 		// -----------------------------------------------------
 	}
 
-	void ProcessMesh(FbxMesh* pMesh, std::map<FbxMesh*, std::string> meshNames, std::map<FbxSurfaceMaterial*, int> materials)
+	void ProcessMesh(FbxMesh* pMesh, String^ meshName, std::map<FbxSurfaceMaterial*, int> materials)
 	{
 		// Checks normals availability.
 		bool has_normals = pMesh->GetElementNormalCount() > 0 && pMesh->GetElementNormal(0)->GetMappingMode() != FbxLayerElement::eNone;
@@ -188,8 +188,6 @@ public:
 			uvElements.push_back(uvElement);
 			needEdgeIndexing |= IsGroupMappingModeByEdge(uvElement);
 		}
-
-		auto meshName = gcnew String(meshNames[pMesh].c_str());
 
 		bool hasSkinningPosition = false;
 		bool hasSkinningNormal = false;
@@ -661,10 +659,10 @@ public:
 			auto materialIndex = materials.find(lMaterial);
 			meshData->MaterialIndex = (materialIndex != materials.end()) ? materialIndex->second : 0;
 
-			auto meshName = meshNames[pMesh];
+			auto iName = meshName;
 			if (buildMeshes->Count > 1)
-				meshName = meshName + "_" + std::to_string(i + 1);
-			meshData->Name = gcnew String(meshName.c_str());
+				iName = iName + "_" + (i + 1);
+			meshData->Name = iName;
 			
 			if (hasSkinningPosition || hasSkinningNormal || totalClusterCount > 0)
 			{
@@ -1251,13 +1249,14 @@ public:
 		return textureNameCount[textureName];
 	}
 
-	void ProcessAttribute(FbxNode* pNode, FbxNodeAttribute* pAttribute, std::map<FbxMesh*, std::string> meshNames, std::map<FbxSurfaceMaterial*, int> materials)
+	void ProcessAttribute(FbxNode* pNode, FbxNodeAttribute* pAttribute, std::map<FbxNode*, std::string> nodeName, std::map<FbxSurfaceMaterial*, int> materials)
 	{
 		if(!pAttribute) return;
  
 		if (pAttribute->GetAttributeType() == FbxNodeAttribute::eMesh)
 		{
-			ProcessMesh((FbxMesh*)pAttribute, meshNames, materials);
+			auto meshName = gcnew String(nodeName[pNode].c_str());
+			ProcessMesh((FbxMesh*)pAttribute, meshName, materials);
 		}
 	}
 
@@ -1297,7 +1296,7 @@ public:
 		}
 	}
 
-	void ProcessNodeAttributes(FbxNode* pNode, std::map<FbxMesh*, std::string> meshNames, std::map<FbxSurfaceMaterial*, int> materials)
+	void ProcessNodeAttributes(FbxNode* pNode, std::map<FbxNode*, std::string> meshNames, std::map<FbxSurfaceMaterial*, int> materials)
 	{
 		// Process the node's attributes.
 		for(int i = 0; i < pNode->GetNodeAttributeCount(); i++)
@@ -1649,48 +1648,6 @@ private:
 			GetMeshes(pNode->GetChild(j), meshes);
 		}
 	}
-	
-	void GenerateMeshesName(std::map<FbxMesh*, std::string>& meshNames)
-	{
-		std::vector<FbxMesh*> meshes;
-		GetMeshes(scene->GetRootNode(), meshes);
-
-		std::map<std::string, int> meshNameTotalCount;
-		std::map<std::string, int> meshNameCurrentCount;
-		std::map<FbxMesh*, std::string> tempNames;
-
-		for (auto iter = meshes.begin(); iter != meshes.end(); ++iter)
-		{
-			auto pMesh = *iter;
-			auto meshName = std::string(pMesh->GetNode()->GetName());
-
-			// remove all bad characters
-			RemoveCharacter(meshName, ' ');
-			tempNames[pMesh] = meshName;
-
-			if (meshNameTotalCount.count(meshName) == 0)
-				meshNameTotalCount[meshName] = 1;
-			else
-				meshNameTotalCount[meshName] = meshNameTotalCount[meshName] + 1;
-		}
-
-		for (auto iter = meshes.begin(); iter != meshes.end(); ++iter)
-		{
-			auto pMesh = *iter;
-			auto meshName = tempNames[pMesh];
-			int currentCount = 0;
-
-			if (meshNameCurrentCount.count(meshName) == 0)
-				meshNameCurrentCount[meshName] = 1;
-			else
-				meshNameCurrentCount[meshName] = meshNameCurrentCount[meshName] + 1;
-
-			if(meshNameTotalCount[meshName] > 1)
-				meshName = meshName + "_" + std::to_string(meshNameCurrentCount[meshName]);
-
-			meshNames[pMesh] = meshName;
-		}
-	}
 
 	MaterialInstantiation^ GetOrCreateMaterial(FbxSurfaceMaterial* lMaterial, List<String^>^ uvNames, List<MaterialInstantiation^>^ instances, std::map<std::string, size_t>& uvElements, std::map<FbxSurfaceMaterial*, std::string>& materialNames)
 	{
@@ -1712,7 +1669,7 @@ private:
 		return newMaterialInstantiation;
 	}
 
-	void SearchMeshInAttribute(FbxNode* pNode, FbxNodeAttribute* pAttribute, std::map<FbxSurfaceMaterial*, std::string> materialNames, std::map<FbxMesh*, std::string> meshNames, List<MeshParameters^>^ models, List<MaterialInstantiation^>^ materialInstantiations)
+	void SearchMeshInAttribute(FbxNode* pNode, FbxNodeAttribute* pAttribute, std::map<FbxSurfaceMaterial*, std::string> materialNames, std::map<FbxNode*, std::string> nodeNames, List<MeshParameters^>^ models, List<MaterialInstantiation^>^ materialInstantiations)
 	{
 		if(!pAttribute) return;
  
@@ -1761,7 +1718,7 @@ private:
 			for (int i = 0; i < buildMeshes->Count; ++i)
 			{
 				auto meshParams = gcnew MeshParameters();
-				auto meshName = meshNames[pMesh];
+				auto meshName = nodeNames[pNode];
 				if (buildMeshes->Count > 1)
 					meshName = meshName + "_" + std::to_string(i + 1);
 				meshParams->MeshName = gcnew String(meshName.c_str());
@@ -1820,16 +1777,16 @@ private:
 		}
 	}
 
-	void SearchMesh(FbxNode* pNode, std::map<FbxSurfaceMaterial*, std::string> materialNames, std::map<FbxMesh*, std::string> meshNames, List<MeshParameters^>^ models, List<MaterialInstantiation^>^ materialInstantiations)
+	void SearchMesh(FbxNode* pNode, std::map<FbxSurfaceMaterial*, std::string> materialNames, std::map<FbxNode*, std::string> nodeNames, List<MeshParameters^>^ models, List<MaterialInstantiation^>^ materialInstantiations)
 	{
 		// Process the node's attributes.
 		for(int i = 0; i < pNode->GetNodeAttributeCount(); i++)
-			SearchMeshInAttribute(pNode, pNode->GetNodeAttributeByIndex(i), materialNames, meshNames, models, materialInstantiations);
+			SearchMeshInAttribute(pNode, pNode->GetNodeAttributeByIndex(i), materialNames, nodeNames, models, materialInstantiations);
 
 		// Recursively process the children nodes.
 		for(int j = 0; j < pNode->GetChildCount(); j++)
 		{
-			SearchMesh(pNode->GetChild(j), materialNames, meshNames, models, materialInstantiations);
+			SearchMesh(pNode->GetChild(j), materialNames, nodeNames, models, materialInstantiations);
 		}
 	}
 
@@ -1854,13 +1811,13 @@ private:
 		std::map<FbxSurfaceMaterial*, std::string> materialNames;
 		GenerateMaterialNames(materialNames);
 
-		std::map<FbxMesh*, std::string> meshNames;
-		GenerateMeshesName(meshNames);
+		std::map<FbxNode*, std::string> nodeNames;
+		SceneMapping::GenerateNodesName(scene, nodeNames);
 			
 		std::map<std::string, FbxSurfaceMaterial*> materialPerMesh;
 		auto models = gcnew List<MeshParameters^>();
 		auto materialInstantiations = gcnew List<MaterialInstantiation^>();
-		SearchMesh(scene->GetRootNode(), materialNames, meshNames, models, materialInstantiations);
+		SearchMesh(scene->GetRootNode(), materialNames, nodeNames, models, materialInstantiations);
 
 		auto ret = gcnew MeshMaterials();
 		ret->Models = models;
@@ -2013,8 +1970,8 @@ public:
 			//	entity->Name = Path::GetFileName(this->inputFilename);
 			//}
 
-			std::map<FbxMesh*, std::string> meshNames;
-			GenerateMeshesName(meshNames);
+			std::map<FbxNode*, std::string> nodeNames;
+			SceneMapping::GenerateNodesName(scene, nodeNames);
 
 			std::map<FbxSurfaceMaterial*, std::string> materialNames;
 			GenerateMaterialNames(materialNames);
@@ -2036,7 +1993,7 @@ public:
 
 			// Process and add root entity
 			ProcessNodeTransformation(scene->GetRootNode());
-			ProcessNodeAttributes(scene->GetRootNode(), meshNames, materials);
+			ProcessNodeAttributes(scene->GetRootNode(), nodeNames, materials);
 
 			return modelData;
 		}

@@ -142,15 +142,6 @@ namespace Stride {
 				{
 					return (Vector3)FbxDouble4ToVector4(_p);
 				}
-			private:
-				static void GetNodes(FbxNode* pNode, std::vector<FbxNode*>& nodes)
-				{
-					nodes.push_back(pNode);
-
-					// Recursively process the children nodes.
-					for (int j = 0; j < pNode->GetChildCount(); j++)
-						GetNodes(pNode->GetChild(j), nodes);
-				}
 
 				static void GenerateNodesName(FbxScene* scene, std::map<FbxNode*, std::string>& nodeNames)
 				{
@@ -192,6 +183,15 @@ namespace Stride {
 
 						nodeNames[pNode] = nodeName;
 					}
+				}
+			private:
+				static void GetNodes(FbxNode* pNode, std::vector<FbxNode*>& nodes)
+				{
+					nodes.push_back(pNode);
+
+					// Recursively process the children nodes.
+					for (int j = 0; j < pNode->GetChildCount(); j++)
+						GetNodes(pNode->GetChild(j), nodes);
 				}
 
 				static void RegisterNode(FbxNode* pNode, int parentIndex, std::map<FbxNode*, std::string>& nodeNames, Dictionary<IntPtr, int>^ nodeMapping, List<ModelNodeDefinition>^ nodes)
