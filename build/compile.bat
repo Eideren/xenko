@@ -4,7 +4,7 @@ setlocal
 
 set STARTTIME=%TIME%
 set __SkipTestBuild=true
-set __BuildType=Debug
+set __BuildType=Release
 set __BuildVerbosity=m
 set __BuildDoc=0
 set __ContinueOnError=false
