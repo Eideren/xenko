@@ -2,7 +2,8 @@
 // Distributed under the MIT license. See the LICENSE.md file in the project root for more information.
 
 using System;
-using System.Globalization;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -47,6 +48,8 @@ namespace Stride.Engine
         private readonly LogListener logListener;
 
         private DatabaseFileProvider databaseFileProvider;
+
+        private ConcurrentBag<(Stream stream, ImageFileType fileType, TaskCompletionSource<Stream> tcs)> screenshots;
 
         /// <summary>
         /// Readonly game settings as defined in the GameSettings asset
@@ -231,6 +234,7 @@ namespace Stride.Engine
             Services.AddService<IGraphicsDeviceManager>(GraphicsDeviceManager);
             Services.AddService<IGraphicsDeviceService>(GraphicsDeviceManager);
 
+            screenshots = new ConcurrentBag<(Stream stream, ImageFileType fileType, TaskCompletionSource<Stream> tcs)>();
             AutoLoadDefaultSettings = true;
         }
 
@@ -421,28 +425,23 @@ namespace Stride.Engine
 
         protected override void EndDraw(bool present)
         {
-            // Allow to make a screenshot using CTRL+c+F12 (on release of F12)
-            if (Input.HasKeyboard)
+            while(screenshots.TryTake(out var v))
             {
-                if (Input.IsKeyDown(Keys.LeftCtrl)
-                    && Input.IsKeyDown(Keys.C)
-                    && Input.IsKeyReleased(Keys.F12))
-                {
-                    var currentFilePath = Assembly.GetEntryAssembly().Location;
-                    var timeNow = DateTime.Now.ToString("s", CultureInfo.InvariantCulture).Replace(':', '_');
-                    var newFileName = Path.Combine(
-                        Path.GetDirectoryName(currentFilePath),
-                        Path.GetFileNameWithoutExtension(currentFilePath) + "_" + timeNow + ".png");
-
-                    Console.WriteLine("Saving screenshot: {0}", newFileName);
-
-                    using (var stream = System.IO.File.Create(newFileName))
-                    {
-                        GraphicsDevice.Presenter.BackBuffer.Save(GraphicsContext.CommandList, stream, ImageFileType.Png);
-                    }
-                }
+                GraphicsDevice.Presenter.BackBuffer.Save(GraphicsContext.CommandList, v.stream, v.fileType);
+                v.tcs.SetResult(v.stream);
             }
+            
             base.EndDraw(present);
+        }
+
+        /// <summary>
+        /// Waits for the current frame to finish drawing before saving it to the stream provided
+        /// </summary>
+        public async Task<Stream> TakeScreenshot(Stream stream, ImageFileType fileType = ImageFileType.Png)
+        {
+            var tcs = new TaskCompletionSource<Stream>();
+            screenshots.Add( (stream, fileType, tcs) );
+            return await tcs.Task;
         }
 
         /// <summary>
