@@ -74,6 +74,19 @@ namespace Stride.Assets.Physics
                         }
                     }
                 }
+                else if (desc is StaticMeshColliderShapeDesc)
+                {
+                    var staticDesc = desc as StaticMeshColliderShapeDesc;
+                    if (staticDesc.Model != null)
+                    {
+                        var url = AttachedReferenceManager.GetUrl(staticDesc.Model);
+
+                        if (!string.IsNullOrEmpty(url))
+                        {
+                            yield return new ObjectUrl(UrlType.Content, url);
+                        }
+                    }
+                }
                 else if (desc is HeightfieldColliderShapeDesc)
                 {
                     var heightfieldDesc = desc as HeightfieldColliderShapeDesc;
@@ -114,13 +127,10 @@ namespace Stride.Assets.Physics
                 // Cloned list of collider shapes
                 var descriptions = Parameters.ColliderShapes.ToList();
 
-                var validShapes = Parameters.ColliderShapes.Where(x => x != null
-                    && (x.GetType() != typeof(ConvexHullColliderShapeDesc) || ((ConvexHullColliderShapeDesc)x).Model != null)).ToList();
-
-                //pre process special types
-                foreach (var convexHullDesc in
-                    (from shape in validShapes let type = shape.GetType() where type == typeof(ConvexHullColliderShapeDesc) select shape)
-                    .Cast<ConvexHullColliderShapeDesc>())
+                foreach (var convexHullDesc in 
+                    from shape in Parameters.ColliderShapes
+                    where shape is ConvexHullColliderShapeDesc hullShape && hullShape.Model != null
+                    select ((ConvexHullColliderShapeDesc)shape))
                 {
                     // Clone the convex hull shape description so the fields that should not be serialized can be cleared (Model in this case)
                     ConvexHullColliderShapeDesc convexHullDescClone = new ConvexHullColliderShapeDesc
@@ -337,6 +347,156 @@ namespace Stride.Assets.Physics
 
                         commandContext.Logger.Info("For a total of " + vertexCountHull + " vertexes");
                     }
+                }
+
+                foreach (var staticMeshDesc in 
+                    from shape in Parameters.ColliderShapes 
+                    where shape is StaticMeshColliderShapeDesc staticShape && staticShape.Model != null 
+                    select ((StaticMeshColliderShapeDesc)shape))
+                {
+                    // Clone the convex hull shape description so the fields that should not be serialized can be cleared (Model in this case)
+                    StaticMeshColliderShapeDesc descClone = new StaticMeshColliderShapeDesc
+                    {
+                        Scaling = staticMeshDesc.Scaling,
+                        LocalOffset = staticMeshDesc.LocalOffset,
+                        LocalRotation = staticMeshDesc.LocalRotation,
+                    };
+
+                    // Replace shape in final result with cloned description
+                    int replaceIndex = descriptions.IndexOf(staticMeshDesc);
+                    descriptions[replaceIndex] = descClone;
+
+                    var loadSettings = new ContentManagerLoaderSettings
+                    {
+                        ContentFilter = ContentManagerLoaderSettings.NewContentFilterByType(typeof(Mesh), typeof(Skeleton))
+                    };
+                    var modelAsset = assetManager.Load<Model>(AttachedReferenceManager.GetUrl(staticMeshDesc.Model), loadSettings);
+                    if (modelAsset == null) continue;
+
+                    commandContext.Logger.Info("Converting mesh into static mesh collider");
+                    
+                    var nodeTransforms = new List<Matrix>();
+                    if (modelAsset.Skeleton == null)
+                    {
+                        Matrix baseMatrix;
+                        Matrix.Transformation(ref descClone.Scaling, ref descClone.LocalRotation, ref descClone.LocalOffset, out baseMatrix);
+                        nodeTransforms.Add(baseMatrix);
+                    }
+                    else
+                    {
+                        var nodesLength = modelAsset.Skeleton.Nodes.Length;
+                        for (var i = 0; i < nodesLength; i++)
+                        {
+                            Matrix localMatrix;
+                            Matrix.Transformation(
+                                ref modelAsset.Skeleton.Nodes[i].Transform.Scale,
+                                ref modelAsset.Skeleton.Nodes[i].Transform.Rotation,
+                                ref modelAsset.Skeleton.Nodes[i].Transform.Position, out localMatrix);
+
+                            Matrix worldMatrix;
+                            if (modelAsset.Skeleton.Nodes[i].ParentIndex != -1)
+                            {
+                                var nodeTransform = nodeTransforms[modelAsset.Skeleton.Nodes[i].ParentIndex];
+                                Matrix.Multiply(ref localMatrix, ref nodeTransform, out worldMatrix);
+                            }
+                            else
+                            {
+                                worldMatrix = localMatrix;
+                            }
+
+                            if (i == 0)
+                            {
+                                Matrix baseMatrix;
+                                Matrix.Transformation(ref descClone.Scaling, ref descClone.LocalRotation, ref descClone.LocalOffset, out baseMatrix);
+                                nodeTransforms.Add(baseMatrix * worldMatrix);
+                            }
+                            else
+                            {
+                                nodeTransforms.Add(worldMatrix);
+                            }
+                        }
+                    }
+                    
+                    var combinedVerts = new List<Vector3>();
+                    var combinedIndices = new List<int>();
+
+                    for (var i = 0; i < nodeTransforms.Count; i++)
+                    {
+                        var i1 = i;
+                        if (modelAsset.Meshes.All(x => x.NodeIndex != i1)) continue; // no geometry in the node
+                        
+                        foreach (var meshData in modelAsset.Meshes.Where(x => x.NodeIndex == i1))
+                        {
+                            var indexOffset = combinedVerts.Count;
+
+                            var stride = meshData.Draw.VertexBuffers[0].Declaration.VertexStride;
+
+                            var vertexBufferRef = AttachedReferenceManager.GetAttachedReference(meshData.Draw.VertexBuffers[0].Buffer);
+                            byte[] vertexData;
+                            if (vertexBufferRef.Data != null)
+                            {
+                                vertexData = ((BufferData)vertexBufferRef.Data).Content;
+                            }
+                            else if (!string.IsNullOrEmpty(vertexBufferRef.Url))
+                            {
+                                var dataAsset = assetManager.Load<Buffer>(vertexBufferRef.Url);
+                                vertexData = dataAsset.GetSerializationData().Content;
+                            }
+                            else
+                            {
+                                continue;
+                            }
+
+                            var vertexIndex = meshData.Draw.VertexBuffers[0].Offset;
+                            for (var v = 0; v < meshData.Draw.VertexBuffers[0].Count; v++)
+                            {
+                                var posMatrix = Matrix.Translation(new Vector3(BitConverter.ToSingle(vertexData, vertexIndex + 0), BitConverter.ToSingle(vertexData, vertexIndex + 4), BitConverter.ToSingle(vertexData, vertexIndex + 8)));
+
+                                Matrix rotatedMatrix;
+                                var nodeTransform = nodeTransforms[i];
+                                Matrix.Multiply(ref posMatrix, ref nodeTransform, out rotatedMatrix);
+
+                                combinedVerts.Add(rotatedMatrix.TranslationVector);
+
+                                vertexIndex += stride;
+                            }
+
+                            var indexBufferRef = AttachedReferenceManager.GetAttachedReference(meshData.Draw.IndexBuffer.Buffer);
+                            byte[] indexData;
+                            if (indexBufferRef.Data != null)
+                            {
+                                indexData = ((BufferData)indexBufferRef.Data).Content;
+                            }
+                            else if (!string.IsNullOrEmpty(indexBufferRef.Url))
+                            {
+                                var dataAsset = assetManager.Load<Buffer>(indexBufferRef.Url);
+                                indexData = dataAsset.GetSerializationData().Content;
+                            }
+                            else
+                            {
+                                throw new Exception("Failed to find index buffer while building a static mesh shape.");
+                            }
+
+                            var indexIndex = meshData.Draw.IndexBuffer.Offset;
+                            for (var v = 0; v < meshData.Draw.IndexBuffer.Count; v++)
+                            {
+                                if (meshData.Draw.IndexBuffer.Is32Bit)
+                                {
+                                    combinedIndices.Add(BitConverter.ToInt32(indexData, indexIndex) + indexOffset);
+                                    indexIndex += 4;
+                                }
+                                else
+                                {
+                                    combinedIndices.Add(BitConverter.ToInt16(indexData, indexIndex) + indexOffset);
+                                    indexIndex += 2;
+                                }
+                            }
+                        }
+                    }
+
+                    commandContext.Logger.Info($"Finished processing mesh for static mesh collider, {combinedVerts.Count} vertices for {combinedIndices.Count} indices");
+                    descClone.Indices = combinedIndices.ToArray();
+                    descClone.Vertices = combinedVerts.ToArray();
                 }
 
                 var runtimeShape = new PhysicsColliderShape(descriptions);

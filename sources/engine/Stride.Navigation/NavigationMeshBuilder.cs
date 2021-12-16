@@ -565,12 +565,12 @@ namespace Stride.Navigation
 
                             // Convert hull indices to int
                             int[] indices = new int[mesh.Indices.Count];
-                            if (mesh.Indices.Count % 3 != 0) throw new InvalidOperationException($"{shapeType} does not consist of triangles");
+                            if (indices.Length % 3 != 0) throw new InvalidOperationException($"{shapeType} does not consist of triangles");
                             for (int i = 0; i < mesh.Indices.Count; i += 3)
                             {
-                                indices[i] = (int)mesh.Indices[i];
-                                indices[i + 2] = (int)mesh.Indices[i + 1]; // NOTE: Reversed winding to create left handed input
-                                indices[i + 1] = (int)mesh.Indices[i + 2];
+                                indices[i] = mesh.Indices[i];
+                                indices[i + 2] = mesh.Indices[i + 1]; // NOTE: Reversed winding to create left handed input
+                                indices[i + 1] = mesh.Indices[i + 2];
                             }
 
                             entityNavigationMeshInputBuilder.AppendArrays(mesh.Vertices.ToArray(), indices, transform);
