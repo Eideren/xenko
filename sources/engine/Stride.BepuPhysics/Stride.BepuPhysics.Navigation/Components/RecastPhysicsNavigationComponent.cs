@@ -25,9 +25,10 @@ public class RecastPhysicsNavigationComponent : EntityComponent
 	[MemberRequired]
 	public required CharacterComponent PhysicsComponent { get; set; }
 
-	/// <summary>
-	/// Indicates if a new path needs to be calculated. Can be manually changed to force a new path calculation.
-	/// </summary>
+    /// <summary>
+    /// Tells the <see cref="RecastPhysicsNavigationProcessor"/> if the agent should move and rotate towards the target in the path.
+    /// This will also reset the <see cref="CharacterComponent"/>'s velocity to zero if set to false.
+    /// </summary>
 	[DataMemberIgnore]
 	public bool ShouldMove
 	{
@@ -44,17 +45,17 @@ public class RecastPhysicsNavigationComponent : EntityComponent
 
 	private bool _shouldMove;
 
-	/// <summary>
-	/// Indicates if a new path should be set.
-	/// </summary>
-	[DataMemberIgnore]
+    /// <summary>
+    /// Tells the <see cref="RecastPhysicsNavigationProcessor"/> to set a new path at the next available opportunity.
+    /// </summary>
+    [DataMemberIgnore]
 	public bool SetNewPath { get; set; } = true;
 
-	/// <summary>
-	/// Indicates if the component is in the queue to set a new path.
-	/// </summary>
+    /// <summary>
+    /// Indicates if the component is in the queue to set a new path. This is used internally to prevent multiple path calculations per frame.
+    /// </summary>
 	[DataMemberIgnore]
-	public bool InSetPathQueue { get; set; }
+	public bool InSetPathQueue { get; internal set; }
 
 	/// <summary>
 	/// The target position for the agent to move to.

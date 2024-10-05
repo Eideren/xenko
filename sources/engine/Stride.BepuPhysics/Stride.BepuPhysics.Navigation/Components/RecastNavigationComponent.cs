@@ -18,23 +18,23 @@ public class RecastNavigationComponent : EntityComponent
 	/// </summary>
 	public float Speed { get; set; } = 5.0f;
 
-	/// <summary>
-	/// Indicates if a new path needs to be calculated. Can be manually changed to force a new path calculation.
-	/// </summary>
-	[DataMemberIgnore]
+    /// <summary>
+    /// Tells the <see cref="RecastNavigationProcessor"/> if the agent should move and rotate towards the target in the path.
+    /// </summary>
+    [DataMemberIgnore]
 	public bool ShouldMove { get; set; } = true;
 
-	/// <summary>
-	/// Indicates if a new path should be set.
-	/// </summary>
+    /// <summary>
+    /// Tells the <see cref="RecastNavigationProcessor"/> to set a new path at the next available opportunity.
+    /// </summary>
 	[DataMemberIgnore]
 	public bool SetNewPath { get; set; } = true;
 
-	/// <summary>
-	/// Indicates if the component is in the queue to set a new path.
-	/// </summary>
-	[DataMemberIgnore]
-	public bool InSetPathQueue { get; set; }
+    /// <summary>
+    /// Indicates if the component is in the queue to set a new path. This is used internally to prevent multiple path calculations per frame.
+    /// </summary>
+    [DataMemberIgnore]
+	public bool InSetPathQueue { get; internal set; }
 
 	/// <summary>
 	/// The target position for the agent to move to.

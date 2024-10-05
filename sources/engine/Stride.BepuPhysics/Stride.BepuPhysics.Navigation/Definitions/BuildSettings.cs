@@ -47,8 +47,6 @@ public class BuildSettings
 	/// </summary>
 	public float AgentMaxAcceleration = 8f;
 
-	//public float AgentMaxSpeed = 3.5f;
-
 	/// <summary>
 	/// The minimum size of regions in the navigation mesh.
 	/// </summary>
