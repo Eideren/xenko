@@ -5,61 +5,128 @@ using DotRecast.Recast;
 using Stride.Core;
 
 namespace Stride.BepuPhysics.Navigation.Definitions;
+/// <summary>
+/// Represents the settings used for building navigation meshes with Recast and Detour.
+/// These settings control various parameters such as cell size, agent properties, region sizes, and filtering options.
+/// </summary>
 [DataContract("DotRecastBuildSettings")]
 public class BuildSettings
 {
-    public float CellSize = 0.3f;
+	/// <summary>
+	/// The size of each cell in the navigation mesh.
+	/// </summary>
+	public float CellSize = 0.3f;
 
-    public float CellHeight = 0.2f;
+	/// <summary>
+	/// The height of each cell in the navigation mesh.
+	/// </summary>
+	public float CellHeight = 0.2f;
 
-    public float AgentHeight = 2f;
+	/// <summary>
+	/// The height of the agent used in the navigation mesh.
+	/// </summary>
+	public float AgentHeight = 2f;
 
-    public float AgentRadius = 0.6f;
+	/// <summary>
+	/// The radius of the agent used in the navigation mesh.
+	/// </summary>
+	public float AgentRadius = 0.6f;
 
-    public float AgentMaxClimb = 0.9f;
+	/// <summary>
+	/// The maximum height the agent can climb.
+	/// </summary>
+	public float AgentMaxClimb = 0.9f;
 
-    public float AgentMaxSlope = 45f;
+	/// <summary>
+	/// The maximum slope the agent can traverse.
+	/// </summary>
+	public float AgentMaxSlope = 45f;
 
-    public float AgentMaxAcceleration = 8f;
+	/// <summary>
+	/// The maximum acceleration of the agent.
+	/// </summary>
+	public float AgentMaxAcceleration = 8f;
 
-    //public float AgentMaxSpeed = 3.5f;
+	//public float AgentMaxSpeed = 3.5f;
 
-    public int MinRegionSize = 8;
+	/// <summary>
+	/// The minimum size of regions in the navigation mesh.
+	/// </summary>
+	public int MinRegionSize = 8;
 
-    public int MergedRegionSize = 20;
+	/// <summary>
+	/// The size of merged regions in the navigation mesh.
+	/// </summary>
+	public int MergedRegionSize = 20;
 
-    public RcPartition PartitionType
-    {
-        get
-        {
-            return RcPartitionType.OfValue(Partitioning);
-        }
-        set
-        {
-            Partitioning = (int)value;
-        }
-    }
+	/// <summary>
+	/// The type of partitioning used in the navigation mesh.
+	/// </summary>
+	public RcPartition PartitionType
+	{
+		get
+		{
+			return RcPartitionType.OfValue(Partitioning);
+		}
+		set
+		{
+			Partitioning = (int)value;
+		}
+	}
 
-    [DataMemberIgnore]
-    public int Partitioning = RcPartitionType.WATERSHED.Value;
+	/// <summary>
+	/// The partitioning value used in the navigation mesh.
+	/// </summary>
+	[DataMemberIgnore]
+	public int Partitioning = RcPartitionType.WATERSHED.Value;
 
-    public bool FilterLowHangingObstacles = true;
+	/// <summary>
+	/// Indicates whether to filter low hanging obstacles in the navigation mesh.
+	/// </summary>
+	public bool FilterLowHangingObstacles = true;
 
-    public bool FilterLedgeSpans = true;
+	/// <summary>
+	/// Indicates whether to filter ledge spans in the navigation mesh.
+	/// </summary>
+	public bool FilterLedgeSpans = true;
 
-    public bool FilterWalkableLowHeightSpans = true;
+	/// <summary>
+	/// Indicates whether to filter walkable low height spans in the navigation mesh.
+	/// </summary>
+	public bool FilterWalkableLowHeightSpans = true;
 
-    public float EdgeMaxLen = 12f;
+	/// <summary>
+	/// The maximum length of edges in the navigation mesh.
+	/// </summary>
+	public float EdgeMaxLen = 12f;
 
-    public float EdgeMaxError = 1.3f;
+	/// <summary>
+	/// The maximum error allowed for edges in the navigation mesh.
+	/// </summary>
+	public float EdgeMaxError = 1.3f;
 
-    public int VertsPerPoly = 6;
+	/// <summary>
+	/// The number of vertices per polygon in the navigation mesh.
+	/// </summary>
+	public int VertsPerPoly = 6;
 
-    public float DetailSampleDist = 6f;
+	/// <summary>
+	/// The distance to sample the detail mesh.
+	/// </summary>
+	public float DetailSampleDist = 6f;
 
-    public float DetailSampleMaxError = 1f;
+	/// <summary>
+	/// The maximum error allowed when sampling the detail mesh.
+	/// </summary>
+	public float DetailSampleMaxError = 1f;
 
-    public bool Tiled;
+	/// <summary>
+	/// Indicates whether the navigation mesh build is tiled.
+	/// </summary>
+	public bool Tiled;
 
-    public int TileSize = 32;
+	/// <summary>
+	/// The size of each tile in the navigation mesh.
+	/// </summary>
+	public int TileSize = 32;
 }

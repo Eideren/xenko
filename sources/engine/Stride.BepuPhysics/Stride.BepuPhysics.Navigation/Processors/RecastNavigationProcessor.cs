@@ -9,6 +9,9 @@ using System.Collections.Concurrent;
 
 namespace Stride.BepuPhysics.Navigation.Processors;
 
+/// <summary>
+/// Handles the movement of entities with a <see cref="RecastNavigationComponent"/>.
+/// </summary>
 public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigationComponent>
 {
     private RecastMeshProcessor _recastMeshProcessor;

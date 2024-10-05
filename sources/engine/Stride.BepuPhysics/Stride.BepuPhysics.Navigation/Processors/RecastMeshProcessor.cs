@@ -21,11 +21,20 @@ using Stride.Engine.Design;
 
 namespace Stride.BepuPhysics.Navigation.Processors;
 
+/// <summary>
+/// This system is responsible for processing the navmesh to be used for pathfinding.
+/// </summary>
 public class RecastMeshProcessor : GameSystemBase
 {
     public TimeSpan LastShapeCacheTime { get; private set; }
 
+    /// <summary>
+    /// The maximum number of polygons.
+    /// </summary>
     public const int MaxPolys = 256;
+    /// <summary>
+    /// The maximum number of smooth path points.
+    /// </summary>
     public const int MaxSmooth = 2048;
 
     private readonly RcVec3f _polyPickExt = new(2, 4, 2);
@@ -63,6 +72,10 @@ public class RecastMeshProcessor : GameSystemBase
         }
     }
 
+    /// <summary>
+    /// Rebuilds the navigation mesh asynchronously. This needs to be manually called when the scene changes for now.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public Task RebuildNavMesh()
     {
         #warning Right now nothing no systems calls for a rebuild of the navmesh, users have to explicitly do it from their side, not the best ...
@@ -130,6 +143,14 @@ public class RecastMeshProcessor : GameSystemBase
         return task;
     }
 
+    /// <summary>
+    /// Creates a new navigation mesh using the specified settings, input, threads, and cancellation token.
+    /// </summary>
+    /// <param name="navSettings">The navigation mesh build settings.</param>
+    /// <param name="input">The input geometry provider.</param>
+    /// <param name="threads">The number of threads to use.</param>
+    /// <param name="cancelToken">The cancellation token.</param>
+    /// <returns>The created navigation mesh.</returns>
     private static DtNavMesh CreateNavMesh(RcNavMeshBuildSettings navSettings, AsyncInput input, int threads, CancellationToken cancelToken)
     {
         // /!\ THIS IS NOT RUNNING ON THE MAIN THREAD /!\
@@ -247,18 +268,39 @@ public class RecastMeshProcessor : GameSystemBase
         return navMesh;
     }
 
+    /// <summary>
+    /// Gets the maximum number of tiles based on the input geometry, cell size, and tile size.
+    /// </summary>
+    /// <param name="geom">The input geometry provider.</param>
+    /// <param name="cellSize">The cell size.</param>
+    /// <param name="tileSize">The tile size.</param>
+    /// <returns>The maximum number of tiles.</returns>
     private static int GetMaxTiles(IInputGeomProvider geom, float cellSize, int tileSize)
     {
         int tileBits = GetTileBits(geom, cellSize, tileSize);
         return 1 << tileBits;
     }
 
+    /// <summary>
+    /// Gets the maximum number of polygons per tile based on the input geometry, cell size, and tile size.
+    /// </summary>
+    /// <param name="geom">The input geometry provider.</param>
+    /// <param name="cellSize">The cell size.</param>
+    /// <param name="tileSize">The tile size.</param>
+    /// <returns>The maximum number of polygons per tile.</returns>
     private static int GetMaxPolysPerTile(IInputGeomProvider geom, float cellSize, int tileSize)
     {
         int num = 22 - GetTileBits(geom, cellSize, tileSize);
         return 1 << num;
     }
 
+    /// <summary>
+    /// Gets the number of bits required to represent a tile based on the input geometry, cell size, and tile size.
+    /// </summary>
+    /// <param name="geom">The input geometry provider.</param>
+    /// <param name="cellSize">The cell size.</param>
+    /// <param name="tileSize">The tile size.</param>
+    /// <returns>The number of bits required to represent a tile.</returns>
     private static int GetTileBits(IInputGeomProvider geom, float cellSize, int tileSize)
     {
         RcCommons.CalcGridSize(geom.GetMeshBoundsMin(), geom.GetMeshBoundsMax(), cellSize, out var sizeX, out var sizeZ);
@@ -267,6 +309,14 @@ public class RecastMeshProcessor : GameSystemBase
         return Math.Min(DtUtils.Ilog2(DtUtils.NextPow2(num * num2)), 14);
     }
 
+    /// <summary>
+    /// Tries to find a path between the specified start and end points.
+    /// </summary>
+    /// <param name="start">The start point.</param>
+    /// <param name="end">The end point.</param>
+    /// <param name="polys">The list of polygons.</param>
+    /// <param name="smoothPath">The list of smooth path points.</param>
+    /// <returns>True if a path is found, false otherwise.</returns>
     public bool TryFindPath(Vector3 start, Vector3 end, ref List<long> polys, ref List<Vector3> smoothPath)
     {
         if (_navMesh is null) return false;
@@ -283,6 +333,10 @@ public class RecastMeshProcessor : GameSystemBase
         return result.Succeeded();
     }
 
+    /// <summary>
+    /// Gets the list of navigation mesh tiles.
+    /// </summary>
+    /// <returns>The list of navigation mesh tiles.</returns>
     public List<Vector3>? GetNavMeshTiles()
     {
         if (_navMesh is null) return null;
@@ -308,6 +362,19 @@ public class RecastMeshProcessor : GameSystemBase
         return verts;
     }
 
+    /// <summary>
+    /// Finds a follow path between the specified start and end references.
+    /// </summary>
+    /// <param name="navQuery">The navigation mesh query.</param>
+    /// <param name="startRef">The start reference.</param>
+    /// <param name="endRef">The end reference.</param>
+    /// <param name="startPt">The start point.</param>
+    /// <param name="endPt">The end point.</param>
+    /// <param name="filter">The query filter.</param>
+    /// <param name="enableRaycast">True to enable raycast, false otherwise.</param>
+    /// <param name="polys">The list of polygons.</param>
+    /// <param name="smoothPath">The list of smooth path points.</param>
+    /// <returns>The status of the find follow path operation.</returns>
     public static DtStatus FindFollowPath(DtNavMeshQuery navQuery, long startRef, long endRef, RcVec3f startPt, RcVec3f endPt, IDtQueryFilter filter, bool enableRaycast, ref List<long> polys, ref List<Vector3> smoothPath)
     {
         if (startRef == 0 || endRef == 0)
@@ -379,58 +446,6 @@ public class RecastMeshProcessor : GameSystemBase
             {
                 iterPos.Y = h;
             }
-
-            // Handle end of path and off-mesh links when close enough.
-            //if (endOfPath && DtPathUtils.InRange(iterPos, steerPos, SLOP, 1.0f))
-            //{
-            //	// Reached end of path.
-            //	iterPos = targetPos;
-            //	if (smoothPath.Count < MaxSmooth)
-            //	{
-            //		smoothPath.Add(iterPos.ToStrideVector());
-            //	}
-            //
-            //	break;
-            //}
-            //else if (offMeshConnection && DtPathUtils.InRange(iterPos, steerPos, SLOP, 1.0f))
-            //{
-            //	// Reached off-mesh connection.
-            //	RcVec3f startPos = RcVec3f.Zero;
-            //	RcVec3f endPos = RcVec3f.Zero;
-            //
-            //	// Advance the path up to and over the off-mesh connection.
-            //	long prevRef = 0;
-            //	long polyRef = polys[0];
-            //	int npos = 0;
-            //	while (npos < polys.Count && polyRef != steerPosRef)
-            //	{
-            //		prevRef = polyRef;
-            //		polyRef = polys[npos];
-            //		npos++;
-            //	}
-            //
-            //	polys = polys.GetRange(npos, polys.Count - npos);
-            //
-            //	// Handle the connection.
-            //	var status2 = navMesh.GetOffMeshConnectionPolyEndPoints(prevRef, polyRef, ref startPos, ref endPos);
-            //	if (status2.Succeeded())
-            //	{
-            //		if (smoothPath.Count < MaxSmooth)
-            //		{
-            //			smoothPath.Add(startPos.ToStrideVector());
-            //			// Hack to make the dotted path not visible during off-mesh connection.
-            //			if ((smoothPath.Count & 1) != 0)
-            //			{
-            //				smoothPath.Add(startPos.ToStrideVector());
-            //			}
-            //		}
-            //
-            //		// Move position at the other side of the off-mesh link.
-            //		iterPos = endPos;
-            //		navQuery.GetPolyHeight(polys[0], iterPos, out var eh);
-            //		iterPos.Y = eh;
-            //	}
-            //}
 
             // Store results.
             if (smoothPath.Count < MaxSmooth)

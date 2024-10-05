@@ -8,6 +8,9 @@ using Stride.Games;
 using System.Collections.Concurrent;
 
 namespace Stride.BepuPhysics.Navigation.Processors;
+/// <summary>
+/// Handles the movement of entities with a <see cref="RecastPhysicsNavigationComponent"/> using the attached <see cref="CharacterComponent"/> for physics based movement.
+/// </summary>
 public class RecastPhysicsNavigationProcessor : EntityProcessor<RecastPhysicsNavigationComponent>
 {
     private RecastMeshProcessor _recastMeshProcessor;
