@@ -158,7 +158,7 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
         var otherCollidable = bepuSimulation.GetComponent(other);
         for (int i = Contacts.Count - 1; i >= 0; i--)
         {
-            if (Contacts[i].Source == otherCollidable)
+            if (Contacts[i].Source == otherCollidable || otherCollidable is null)
                 Contacts.SwapRemoveAt(i);
         }
     }
