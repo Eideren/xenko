@@ -37,7 +37,7 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
     /// Order is not guaranteed and may change at any moment
     /// </summary>
     [DataMemberIgnore]
-    public List<(CollidableComponent Source, Contact Contact)> Contacts { get; } = new();
+    public List<(CollidableReference Source, Contact Contact)> Contacts { get; } = new();
 
     public CharacterComponent()
     {
@@ -47,10 +47,8 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
     /// <inheritdoc cref="BodyComponent.AttachInner"/>
     protected override void AttachInner(NRigidPose pose, BodyInertia shapeInertia, TypedIndex shapeIndex)
     {
-        #warning Norbo: validate whether we can remove the setter for BodyInertia below by feeding it in place of shapeIntertia here ?
-        base.AttachInner(pose, shapeInertia, shapeIndex);
+        base.AttachInner(pose, new BodyInertia { InverseMass = 1f }, shapeIndex);
         FrictionCoefficient = 0f;
-        BodyInertia = new BodyInertia { InverseMass = 1f };
         ContactEventHandler = this;
     }
 
@@ -142,26 +140,24 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
     void IContactEventHandler.OnStartedTouching<TManifold>(CollidableReference eventSource, CollidableReference other, ref TManifold contactManifold, int contactIndex, BepuSimulation bepuSimulation) => OnStartedTouching(eventSource, other, ref contactManifold, contactIndex, bepuSimulation);
     void IContactEventHandler.OnStoppedTouching<TManifold>(CollidableReference eventSource, CollidableReference other, ref TManifold contactManifold, int contactIndex, BepuSimulation bepuSimulation) => OnStoppedTouching(eventSource, other, ref contactManifold, contactIndex, bepuSimulation);
 
-
     protected bool NoContactResponse => false;
 
     protected virtual void OnStartedTouching<TManifold>(CollidableReference eventSource, CollidableReference other, ref TManifold contactManifold, int contactIndex, BepuSimulation bepuSimulation) where TManifold : unmanaged, IContactManifold<TManifold>
     {
-        var otherCollidable = bepuSimulation.GetComponent(other);
         contactManifold.GetContact(contactIndex, out var contact);
         contact.Offset = contact.Offset + Entity.Transform.WorldMatrix.TranslationVector.ToNumeric() + CenterOfMass.ToNumeric();
-        Contacts.Add((otherCollidable, contact));
+        Contacts.Add((other, contact));
     }
 
     protected virtual void OnStoppedTouching<TManifold>(CollidableReference eventSource, CollidableReference other, ref TManifold contactManifold, int contactIndex, BepuSimulation bepuSimulation) where TManifold : unmanaged, IContactManifold<TManifold>
     {
-        var otherCollidable = bepuSimulation.GetComponent(other);
         for (int i = Contacts.Count - 1; i >= 0; i--)
         {
-            if (Contacts[i].Source == otherCollidable || otherCollidable is null)
+            if (Contacts[i].Source == other)
                 Contacts.SwapRemoveAt(i);
         }
     }
+
 }
 
 
