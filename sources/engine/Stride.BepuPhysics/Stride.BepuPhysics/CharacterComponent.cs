@@ -19,13 +19,17 @@ namespace Stride.BepuPhysics;
 [ComponentCategory("Bepu")]
 public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEventHandler
 {
-    private bool _tryJump;
 
     /// <summary> Base speed applied when moving, measured in units per second </summary>
     public float Speed { get; set; } = 10f;
 
     /// <summary> Force of the impulse applied when calling <see cref="TryJump"/> </summary>
     public float JumpSpeed { get; set; } = 10f;
+    /// <summary>
+    /// How long the character should be in the air before falling faster.
+    /// </summary>
+    public float PeakAirTime { get; set; } = 0.5f;
+    public float FallSpeedMultiplier { get; set; } = 2.0f;
 
     [DataMemberIgnore]
     public Vector3 Velocity { get; set; }
@@ -38,6 +42,11 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
     /// </summary>
     [DataMemberIgnore]
     public List<(CollidableReference Source, Contact Contact)> Contacts { get; } = new();
+
+    private bool _tryJump;
+    private bool _didJump;
+
+    private float _airTime;
 
     public CharacterComponent()
     {
@@ -86,7 +95,10 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
         if (_tryJump)
         {
             if (IsGrounded)
+            {
                 ApplyLinearImpulse(Vector3.UnitY * JumpSpeed);
+                _didJump = true;
+            }
             _tryJump = false;
         }
     }
@@ -97,10 +109,18 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
     /// <param name="simTimeStep">The amount of time in seconds since the last simulation</param>
     public virtual void AfterSimulationUpdate(float simTimeStep)
     {
+        UpdateFallSpeed(simTimeStep);
+
         IsGrounded = GroundTest(-Simulation!.PoseGravity.ToNumeric()); // Checking for grounded after simulation ran to compute contacts as soon as possible after they are received
         // If there is no input from the player, and we are grounded, ignore gravity to prevent sliding down the slope we might be on
         // Do not ignore if there is any input to ensure we stick to the surface as much as possible while moving down a slope
         Gravity = !IsGrounded || Velocity.Length() > 0f;
+
+        if (IsGrounded == true && !_didJump)
+        {
+            LinearVelocity = new Vector3(0, 0, 0);
+        }
+        _didJump = false;
     }
 
     /// <summary>
@@ -134,6 +154,19 @@ public class CharacterComponent : BodyComponent, ISimulationUpdate, IContactEven
         }
 
         return false;
+    }
+
+    private void UpdateFallSpeed(float delta)
+    {
+        _airTime += delta * FallSpeedMultiplier;
+        if (IsGrounded || _airTime <= PeakAirTime)
+        {
+            _airTime = 0;
+        }
+        else
+        {
+            LinearVelocity = new Vector3(0, -9.8f * (_airTime + 1), 0);
+        }
     }
 
     bool IContactEventHandler.NoContactResponse => NoContactResponse;
