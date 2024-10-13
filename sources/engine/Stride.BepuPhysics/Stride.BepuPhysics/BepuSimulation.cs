@@ -43,6 +43,8 @@ public sealed class BepuSimulation : IDisposable
     private TimeSpan _softStartRemainingDuration;
     private bool _softStartScheduled = false;
     private UrlReference<Scene>? _associatedScene = null;
+    private AwaitRunner _preTickRunner = new();
+    private AwaitRunner _postTickRunner = new();
 
     internal BufferPool BufferPool { get; }
 
@@ -51,6 +53,9 @@ public sealed class BepuSimulation : IDisposable
 
     internal List<BodyComponent?> Bodies { get; } = new();
     internal List<StaticComponent?> Statics { get; } = new();
+
+    /// <summary> Required when a component is removed from the simulation and must have its contacts flushed </summary>
+    internal (int value, CollidableComponent? component) TemporaryDetachedLookup { get; set; }
 
     /// <inheritdoc cref="Stride.BepuPhysics.Definitions.CollisionMatrix"/>
     [DataMemberIgnore]
@@ -308,6 +313,9 @@ public sealed class BepuSimulation : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public BodyComponent GetComponent(BodyHandle handle)
     {
+        if (TemporaryDetachedLookup.component is BodyComponent detachedBody && handle.Value == TemporaryDetachedLookup.value)
+            return detachedBody;
+
         var body = Bodies[handle.Value];
         Debug.Assert(body is not null, "Handle is invalid, Bepu's array indexing strategy might have changed under us");
         return body;
@@ -315,10 +323,25 @@ public sealed class BepuSimulation : IDisposable
 
     public StaticComponent GetComponent(StaticHandle handle)
     {
+        if (TemporaryDetachedLookup.component is StaticComponent detachedStatic && handle.Value == TemporaryDetachedLookup.value)
+            return detachedStatic;
+
         var statics = Statics[handle.Value];
         Debug.Assert(statics is not null, "Handle is invalid, Bepu's array indexing strategy might have changed under us");
         return statics;
     }
+
+    /// <summary>
+    /// Yields execution until right before the next physics tick
+    /// </summary>
+    /// <returns>Task that will resume next tick.</returns>
+    public TickAwaiter NextUpdate() => new TickAwaiter(_preTickRunner);
+
+    /// <summary>
+    /// Yields execution until right after the next physics tick
+    /// </summary>
+    /// <returns>Task that will resume next tick.</returns>
+    public TickAwaiter AfterUpdate() => new TickAwaiter(_postTickRunner);
 
     /// <summary>
     /// Whether a physics test with <paramref name="mask"/> against <paramref name="collidable"/> should be performed or entirely ignored
@@ -338,7 +361,7 @@ public sealed class BepuSimulation : IDisposable
     /// <param name="dir">The normalized direction the ray is facing</param>
     /// <param name="maxDistance">The maximum from the origin that hits will be collected</param>
     /// <param name="result">An intersection in the world when this method returns true, an undefined value when this method returns false</param>
-    /// <param name="collisionMask"></param>
+    /// <param name="collisionMask">Which layer should be hit</param>
     /// <returns>True when the given ray intersects with a shape, false otherwise</returns>
     public bool RayCast(in Vector3 origin, in Vector3 dir, float maxDistance, out HitInfo result, CollisionMask collisionMask = CollisionMask.Everything)
     {
@@ -368,14 +391,14 @@ public sealed class BepuSimulation : IDisposable
     /// A temporary buffer which is used as a backing array to write to, its length defines the maximum amount of info you want to read.
     /// It is used by the returned enumerator as its backing array from which you read
     /// </param>
-    /// <param name="collisionMask"></param>
-    public unsafe ConversionEnum<ManagedConverter, HitInfoStack, HitInfo> RaycastPenetrating(in Vector3 origin, in Vector3 dir, float maxDistance, Span<HitInfoStack> buffer, CollisionMask collisionMask = CollisionMask.Everything)
+    /// <param name="collisionMask">Which layer should be hit</param>
+    public unsafe ConversionEnum<ManagedConverter, HitInfoStack, HitInfo> RayCastPenetrating(in Vector3 origin, in Vector3 dir, float maxDistance, Span<HitInfoStack> buffer, CollisionMask collisionMask = CollisionMask.Everything)
     {
         fixed (HitInfoStack* ptr = &buffer[0])
         {
             var handler = new RayHitsStackHandler(ptr, buffer.Length, this, collisionMask);
             Simulation.RayCast(origin.ToNumeric(), dir.ToNumeric(), maxDistance, ref handler);
-            return new (buffer[..handler.Head], new(this));
+            return new (buffer[..handler.Head], new ManagedConverter(this));
         }
     }
 
@@ -387,8 +410,8 @@ public sealed class BepuSimulation : IDisposable
     /// <param name="dir">The normalized direction the ray is facing</param>
     /// <param name="maxDistance">The maximum from the origin that hits will be collected</param>
     /// <param name="collection">The collection used to store hits into, the collection is not cleared before usage, hits are appended to it</param>
-    /// <param name="collisionMask"></param>
-    public void RaycastPenetrating(in Vector3 origin, in Vector3 dir, float maxDistance, ICollection<HitInfo> collection, CollisionMask collisionMask = CollisionMask.Everything)
+    /// <param name="collisionMask">Which layer should be hit</param>
+    public void RayCastPenetrating(in Vector3 origin, in Vector3 dir, float maxDistance, ICollection<HitInfo> collection, CollisionMask collisionMask = CollisionMask.Everything)
     {
         var handler = new RayHitsCollectionHandler(this, collection, collisionMask);
         Simulation.RayCast(origin.ToNumeric(), dir.ToNumeric(), maxDistance, ref handler);
@@ -402,7 +425,7 @@ public sealed class BepuSimulation : IDisposable
     /// <param name="velocity">Velocity used to throw the shape</param>
     /// <param name="maxDistance">The maximum distance, or amount of time along the path of the <paramref name="velocity"/></param>
     /// <param name="result">The resulting contact when this method returns true, an undefined value when this method returns false</param>
-    /// <param name="collisionMask"></param>
+    /// <param name="collisionMask">Which layer should be hit</param>
     /// <typeparam name="TShape"></typeparam>
     /// <returns>True when the given ray intersects with a shape, false otherwise</returns>
     public bool SweepCast<TShape>(in TShape shape, in SRigidPose pose, in SBodyVelocity velocity, float maxDistance, out HitInfo result, CollisionMask collisionMask = CollisionMask.Everything) where TShape : unmanaged, IConvexShape //== collider "RayCast"
@@ -434,7 +457,7 @@ public sealed class BepuSimulation : IDisposable
     /// A temporary buffer which is used as a backing array to write to, its length defines the maximum amount of info you want to read.
     /// It is used by the returned enumerator as its backing array from which you read
     /// </param>
-    /// <param name="collisionMask"></param>
+    /// <param name="collisionMask">Which layer should be hit</param>
     /// <typeparam name="TShape"></typeparam>
     public unsafe ConversionEnum<ManagedConverter, HitInfoStack, HitInfo> SweepCastPenetrating<TShape>(in TShape shape, in SRigidPose pose, in SBodyVelocity velocity, float maxDistance, Span<HitInfoStack> buffer, CollisionMask collisionMask = CollisionMask.Everything) where TShape : unmanaged, IConvexShape //== collider "RayCast"
     {
@@ -455,7 +478,7 @@ public sealed class BepuSimulation : IDisposable
     /// <param name="velocity">Velocity used to throw the shape</param>
     /// <param name="maxDistance">The maximum distance, or amount of time along the path of the <paramref name="velocity"/></param>
     /// <param name="collection">The collection used to store hits into, the collection is not cleared before usage, hits are appended to it</param>
-    /// <param name="collisionMask"></param>
+    /// <param name="collisionMask">Which layer should be hit</param>
     /// <typeparam name="TShape"></typeparam>
     /// <returns>True when the given ray intersects with a shape, false otherwise</returns>
     public void SweepCastPenetrating<TShape>(in TShape shape, in SRigidPose pose, in SBodyVelocity velocity, float maxDistance, ICollection<HitInfo> collection, CollisionMask collisionMask = CollisionMask.Everything) where TShape : unmanaged, IConvexShape //== collider "RayCast"
@@ -471,7 +494,7 @@ public sealed class BepuSimulation : IDisposable
     /// <param name="shape">The shape used to test for overlap</param>
     /// <param name="pose">Position the shape is on for this test</param>
     /// <param name="collection">The collection used to store overlapped shapes into. Note that the collection is not cleared before items are added to it</param>
-    /// <param name="collisionMask">The mask used to improve performance by masking only what you intend to detect</param>
+    /// <param name="collisionMask">Which layer should be hit</param>
     public void Overlap<TShape>(in TShape shape, in SRigidPose pose, ICollection<OverlapInfo> collection, CollisionMask collisionMask = CollisionMask.Everything) where TShape : unmanaged, IConvexShape
     {
         var collector = new CollectionCollector(collection);
@@ -488,7 +511,7 @@ public sealed class BepuSimulation : IDisposable
     /// A temporary buffer which is used as a backing array to write to, its length defines the maximum amount of info you want to read.
     /// It is used by the returned enumerator as its backing array from which you read
     /// </param>
-    /// <param name="collisionMask">Mask used to ignore shapes assigned to certain layers</param>
+    /// <param name="collisionMask">Which layer should be hit</param>
     public ConversionEnum<ManagedConverter, CollidableStack, CollidableComponent> Overlap<TShape>(in TShape shape, in SRigidPose pose, Span<CollidableStack> buffer, CollisionMask collisionMask = CollisionMask.Everything) where TShape : unmanaged, IConvexShape
     {
         unsafe
@@ -515,7 +538,7 @@ public sealed class BepuSimulation : IDisposable
     /// A temporary buffer which is used as a backing array to write to, its length defines the maximum amount of info you want to read.
     /// It is used by the returned enumerator as its backing array from which you read
     /// </param>
-    /// <param name="collisionMask">Mask used to ignore shapes assigned to certain layers</param>
+    /// <param name="collisionMask">Which layer should be hit</param>
     public ConversionEnum<ManagedConverter, OverlapInfoStack, OverlapInfo> OverlapInfo<TShape>(in TShape shape, in SRigidPose pose, Span<OverlapInfoStack> buffer, CollisionMask collisionMask = CollisionMask.Everything) where TShape : unmanaged, IConvexShape
     {
         unsafe
@@ -689,6 +712,9 @@ public sealed class BepuSimulation : IDisposable
             }
 
             var simTimeStepInSec = (float)FixedTimeStep.TotalSeconds;
+
+            _preTickRunner.Run();
+
             foreach (var updateComponent in _simulationUpdateComponents)
             {
                 updateComponent.SimulationUpdate(simTimeStepInSec);
@@ -709,6 +735,8 @@ public sealed class BepuSimulation : IDisposable
             {
                 updateComponent.AfterSimulationUpdate(simTimeStepInSec);
             }
+
+            _postTickRunner.Run();
 
             foreach (var body in _interpolatedBodies)
             {
@@ -839,5 +867,54 @@ public sealed class BepuSimulation : IDisposable
     internal void UnregisterInterpolated(BodyComponent body)
     {
         _interpolatedBodies.Remove(body);
+    }
+
+    internal class AwaitRunner
+    {
+        private object _addLock = new();
+        private List<Action> _scheduled = new();
+        private List<Action> _processed = new();
+
+        public void Add(Action a)
+        {
+            lock (_addLock)
+            {
+                _scheduled.Add(a);
+            }
+        }
+
+        public void Run()
+        {
+            lock (_addLock)
+            {
+                (_processed, _scheduled) = (_scheduled, _processed);
+            }
+
+            foreach (var item in _processed)
+                item.Invoke();
+
+            _processed.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Await this struct to continue during a physics tick
+    /// </summary>
+    public struct TickAwaiter : INotifyCompletion
+    {
+        private AwaitRunner _runner;
+
+        internal TickAwaiter(AwaitRunner runner)
+        {
+            _runner = runner;
+        }
+
+        public bool IsCompleted => false; // Forces the awaiter to call OnCompleted() right away to schedule asynchronous method continuation with our runner
+
+        public void OnCompleted(Action continuation) => _runner.Add(continuation);
+
+        public void GetResult() { }
+
+        public TickAwaiter GetAwaiter() => this;
     }
 }
