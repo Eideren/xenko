@@ -37,6 +37,8 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
             var sceneSystem = Services.GetSafeServiceAs<SceneSystem>();
             sceneSystem.Game!.GameSystems.Add(_recastMeshProcessor);
         }
+
+        Services.AddService(this);
     }
 
     protected override void OnEntityComponentAdding(Entity entity, RecastNavigationComponent component, RecastNavigationComponent data)
@@ -53,7 +55,7 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
     {
         var deltaTime = (float)time.Elapsed.TotalSeconds;
 
-        for(int i = 0; i < 10; i++)
+        for (int i = 0; i < 10; i++)
         {
             if (_tryGetPathQueue.IsEmpty) break;
 
@@ -67,35 +69,38 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
         Dispatcher.For(0, _components.Count, i =>
         {
             var component = _components[i];
-            if (component.ShouldMove)
+
+            if(component.State == NavigationState.QueuePathPlanning)
+            {
+                _tryGetPathQueue.Enqueue(component);
+                component.State = NavigationState.PlanningPath;
+            }
+
+            // This allows the agent to move towards the target even if a path is being planned.
+            // This allows  the user to determine if the agent should stop moving if the path is no longer valid.
+            if (component.IsMoving)
             {
                 Move(component, deltaTime);
                 Rotate(component);
             }
-
-            if (component.SetNewPath && !component.InSetPathQueue)
-            {
-                _tryGetPathQueue.Enqueue(component);
-                component.InSetPathQueue = true;
-                component.SetNewPath = false;
-            }
         });
     }
 
-    private void SetNewPath(RecastNavigationComponent pathfinder)
+    public bool SetNewPath(RecastNavigationComponent pathfinder)
     {
-        pathfinder.InSetPathQueue = false;
         if (_recastMeshProcessor.TryFindPath(pathfinder.Entity.Transform.WorldMatrix.TranslationVector, pathfinder.Target, ref pathfinder.Polys, ref pathfinder.Path))
         {
-            pathfinder.SetNewPath = false;
+            pathfinder.State = NavigationState.PathIsReady;
+            return true;
         }
+        return false;
     }
 
     private void Move(RecastNavigationComponent pathfinder, float deltaTime)
     {
         if (pathfinder.Path.Count == 0)
         {
-            pathfinder.SetNewPath = true;
+            pathfinder.State = NavigationState.PathIsInvalid;
             return;
         }
 
