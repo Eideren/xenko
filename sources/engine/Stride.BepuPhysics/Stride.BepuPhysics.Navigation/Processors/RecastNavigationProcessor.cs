@@ -70,27 +70,28 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
         Dispatcher.For(0, _components.Count, i =>
         {
             var component = _components[i];
-            if (component.ShouldMove)
-            {
-                Move(component, deltaTime);
-                Rotate(component);
-            }
 
-            if (component.SetNewPath && !component.InSetPathQueue)
+            switch(component.State)
             {
-                _tryGetPathQueue.Enqueue(component);
-                component.InSetPathQueue = true;
-                component.SetNewPath = false;
+                case NavigationState.Idle:
+                    break;
+                case NavigationState.FollowingPath:
+                    Move(component, deltaTime);
+                    Rotate(component);
+                    break;
+                case NavigationState.QueuePathPlanning:
+                    _tryGetPathQueue.Enqueue(component);
+                    component.State = NavigationState.PlanningPath;
+                    break;
             }
         });
     }
 
     private void SetNewPath(RecastNavigationComponent pathfinder)
     {
-        pathfinder.InSetPathQueue = false;
         if (_recastMeshProcessor.TryFindPath(pathfinder.Entity.Transform.WorldMatrix.TranslationVector, pathfinder.Target, ref pathfinder.Polys, ref pathfinder.Path))
         {
-            pathfinder.SetNewPath = false;
+            pathfinder.State = NavigationState.FollowingPath;
         }
     }
 
@@ -98,7 +99,6 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
     {
         if (pathfinder.Path.Count == 0)
         {
-            pathfinder.SetNewPath = true;
             return;
         }
 
