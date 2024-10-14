@@ -76,13 +76,7 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
                 component.State = NavigationState.PlanningPath;
             }
 
-            // This allows the agent to move towards the target even if a path is being planned.
-            // This allows  the user to determine if the agent should stop moving if the path is no longer valid.
-            if (component.IsMoving)
-            {
-                Move(component, deltaTime);
-                Rotate(component);
-            }
+            component.Update(deltaTime);
         });
     }
 
@@ -94,53 +88,5 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
             return true;
         }
         return false;
-    }
-
-    private void Move(RecastNavigationComponent pathfinder, float deltaTime)
-    {
-        if (pathfinder.Path.Count == 0)
-        {
-            pathfinder.State = NavigationState.PathIsInvalid;
-            return;
-        }
-
-        var position = pathfinder.Entity.Transform.WorldMatrix.TranslationVector;
-
-        var nextWaypointPosition = pathfinder.Path[0];
-        var distanceToWaypoint = Vector3.Distance(position, nextWaypointPosition);
-
-        // When the distance between the character and the next waypoint is large enough, move closer to the waypoint
-        if (distanceToWaypoint > 0.1)
-        {
-            var direction = nextWaypointPosition - position;
-            direction.Normalize();
-            direction *= pathfinder.Speed * deltaTime;
-
-            position += direction;
-        }
-        else
-        {
-            if (pathfinder.Path.Count > 0)
-            {
-                // need to test if storing the index in Pathfinder would be faster than this.
-                pathfinder.Path.RemoveAt(0);
-            }
-        }
-
-        pathfinder.Entity.Transform.Position = position;
-    }
-
-    private void Rotate(RecastNavigationComponent pathfinder)
-    {
-        if (pathfinder.Path.Count == 0)
-        {
-            return;
-        }
-        var position = pathfinder.Entity.Transform.WorldMatrix.TranslationVector;
-
-        float angle = (float)Math.Atan2(pathfinder.Path[0].Z - position.Z,
-            pathfinder.Path[0].X - position.X);
-
-        pathfinder.Entity.Transform.Rotation = Quaternion.RotationY(-angle);
     }
 }

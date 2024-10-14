@@ -1,8 +1,10 @@
-﻿using Stride.BepuPhysics.Navigation.Processors;
+﻿using System.ComponentModel;
+using Stride.BepuPhysics.Navigation.Processors;
 using Stride.Core;
 using Stride.Core.Mathematics;
 using Stride.Engine;
 using Stride.Engine.Design;
+using Stride.Games;
 
 namespace Stride.BepuPhysics.Navigation.Components;
 [DataContract(nameof(RecastNavigationComponent))]
@@ -91,6 +93,71 @@ public class RecastNavigationComponent : StartupScript
     public virtual void StopFollowingPath()
     {
         IsMoving = false;
+    }
+
+    /// <summary>
+    /// Controls what the agent should do per frame. By default, this will move the agent towards the target if <see cref="IsMoving"/> is true.
+    /// <para>This method is run in multiple threads so data safety is crucial.</para>
+    /// </summary>
+    /// <param name="deltaTime"></param>
+    public virtual void Update(float deltaTime)
+    {
+        // This allows the agent to move towards the target even if a path is being planned.
+        // This allows  the user to determine if the agent should stop moving if the path is no longer valid.
+        if (IsMoving)
+        {
+            Move(deltaTime);
+            Rotate();
+        }
+
+    }
+
+    private void Move(float deltaTime)
+    {
+        if (Path.Count == 0)
+        {
+            State = NavigationState.PathIsInvalid;
+            return;
+        }
+
+        var position = Entity.Transform.WorldMatrix.TranslationVector;
+
+        var nextWaypointPosition = Path[0];
+        var distanceToWaypoint = Vector3.Distance(position, nextWaypointPosition);
+
+        // When the distance between the character and the next waypoint is large enough, move closer to the waypoint
+        if (distanceToWaypoint > 0.1)
+        {
+            var direction = nextWaypointPosition - position;
+            direction.Normalize();
+            direction *= Speed * deltaTime;
+
+            position += direction;
+        }
+        else
+        {
+            if (Path.Count > 0)
+            {
+                // need to test if storing the index in Pathfinder would be faster than this.
+                Path.RemoveAt(0);
+            }
+        }
+
+        Entity.Transform.Position = position;
+    }
+
+    private void Rotate()
+    {
+        if (Path.Count == 0)
+        {
+            return;
+        }
+        var position = Entity.Transform.WorldMatrix.TranslationVector;
+
+        float angle = (float)Math.Atan2(Path[0].Z - position.Z,
+            Path[0].X - position.X);
+
+        Entity.Transform.Rotation = Quaternion.RotationY(-angle);
     }
 }
 
