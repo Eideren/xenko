@@ -21,7 +21,7 @@ using Stride.Engine.Design;
 
 namespace Stride.BepuPhysics.Navigation.Processors;
 
-public class RecastMeshProcessor : GameSystemBase
+public class RecastMeshSystem : GameSystemBase
 {
     public TimeSpan LastShapeCacheTime { get; private set; }
 
@@ -40,7 +40,7 @@ public class RecastMeshProcessor : GameSystemBase
     private CancellationTokenSource _rebuildingTask = new();
     private RecastNavigationConfiguration _navSettings;
 
-    public RecastMeshProcessor(IServiceRegistry registry) : base(registry)
+    public RecastMeshSystem(IServiceRegistry registry) : base(registry)
     {
         UpdateOrder = 20000;
         Enabled = true; //enabled by default

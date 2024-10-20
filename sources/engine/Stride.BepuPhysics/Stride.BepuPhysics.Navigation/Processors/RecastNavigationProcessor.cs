@@ -11,7 +11,7 @@ namespace Stride.BepuPhysics.Navigation.Processors;
 
 public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigationComponent>
 {
-    private RecastMeshProcessor _recastMeshProcessor;
+    private RecastMeshSystem _recastMeshProcessor;
     private readonly List<RecastNavigationComponent> _components = new();
     private readonly ConcurrentQueue<RecastNavigationComponent> _tryGetPathQueue = new();
 
@@ -25,14 +25,14 @@ public sealed class RecastNavigationProcessor : EntityProcessor<RecastNavigation
     protected override void OnSystemAdd()
     {
         ServicesHelper.LoadBepuServices(Services, out _, out _, out _);
-        if (Services.GetService<RecastMeshProcessor>() is { } recastMeshProcessor)
+        if (Services.GetService<RecastMeshSystem>() is { } recastMeshProcessor)
         {
             _recastMeshProcessor = recastMeshProcessor;
         }
         else
         {
             // add the RecastMeshProcessor if it doesn't exist
-            _recastMeshProcessor = new RecastMeshProcessor(Services);
+            _recastMeshProcessor = new RecastMeshSystem(Services);
             // add to the Scenes processors
             var sceneSystem = Services.GetSafeServiceAs<SceneSystem>();
             sceneSystem.Game!.GameSystems.Add(_recastMeshProcessor);
