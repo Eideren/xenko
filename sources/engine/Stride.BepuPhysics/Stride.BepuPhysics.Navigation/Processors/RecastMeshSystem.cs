@@ -236,10 +236,11 @@ public class RecastMeshSystem : GameSystemBase
         option.tileHeight = navSettings.tileSize * navSettings.cellSize;
         option.maxTiles = GetMaxTiles(geom, navSettings.cellSize, navSettings.tileSize);
         option.maxPolys = GetMaxPolysPerTile(geom, navSettings.cellSize, navSettings.tileSize);
-        DtNavMesh navMesh = new(option, navSettings.vertsPerPoly);
+        DtNavMesh navMesh = new DtNavMesh();
+        navMesh.Init(option, navSettings.vertsPerPoly);
         foreach (DtMeshData dtMeshData1 in dtMeshes)
         {
-            navMesh.AddTile(dtMeshData1, 0, 0L);
+            navMesh.AddTile(dtMeshData1, 0, 0L, out _);
         }
 
         cancelToken.ThrowIfCancellationRequested();
@@ -261,7 +262,7 @@ public class RecastMeshSystem : GameSystemBase
 
     private static int GetTileBits(IInputGeomProvider geom, float cellSize, int tileSize)
     {
-        RcCommons.CalcGridSize(geom.GetMeshBoundsMin(), geom.GetMeshBoundsMax(), cellSize, out var sizeX, out var sizeZ);
+        RcRecast.CalcGridSize(geom.GetMeshBoundsMin(), geom.GetMeshBoundsMax(), cellSize, out var sizeX, out var sizeZ);
         int num = (sizeX + tileSize - 1) / tileSize;
         int num2 = (sizeZ + tileSize - 1) / tileSize;
         return Math.Min(DtUtils.Ilog2(DtUtils.NextPow2(num * num2)), 14);
@@ -278,7 +279,7 @@ public class RecastMeshSystem : GameSystemBase
 
         dtNavMeshQuery.FindNearestPoly(end.ToDotRecastVector(), _polyPickExt, queryFilter, out long endRef, out _, out _);
         // find the nearest point on the navmesh to the start and end points
-        var result = FindFollowPath(dtNavMeshQuery, startRef, endRef, start.ToDotRecastVector(), end.ToDotRecastVector(), queryFilter, true, ref polys, ref smoothPath);
+        var result = FindFollowPath(dtNavMeshQuery, startRef, endRef, start.ToDotRecastVector(), end.ToDotRecastVector(), queryFilter, true, ref polys, polys.Count, ref smoothPath);
 
         return result.Succeeded();
     }
@@ -308,7 +309,7 @@ public class RecastMeshSystem : GameSystemBase
         return verts;
     }
 
-    public static DtStatus FindFollowPath(DtNavMeshQuery navQuery, long startRef, long endRef, RcVec3f startPt, RcVec3f endPt, IDtQueryFilter filter, bool enableRaycast, ref List<long> polys, ref List<Vector3> smoothPath)
+    public static DtStatus FindFollowPath(DtNavMeshQuery navQuery, long startRef, long endRef, RcVec3f startPt, RcVec3f endPt, IDtQueryFilter filter, bool enableRaycast, ref List<long> polys, int pathIterPolyCount, ref List<Vector3> smoothPath)
     {
         if (startRef == 0 || endRef == 0)
         {
@@ -320,11 +321,14 @@ public class RecastMeshSystem : GameSystemBase
 
         polys.Clear();
         smoothPath.Clear();
+        pathIterPolyCount = 0;
 
         var opt = new DtFindPathOption(enableRaycast ? DtFindPathOptions.DT_FINDPATH_ANY_ANGLE : 0, float.MaxValue);
         navQuery.FindPath(startRef, endRef, startPt, endPt, filter, ref polys, opt);
         if (0 >= polys.Count)
             return DtStatus.DT_FAILURE;
+
+        pathIterPolyCount = polys.Count;
 
         // Iterate over the path to find smooth path on the detail mesh surface.
         navQuery.ClosestPointOnPoly(startRef, startPt, out var iterPos, out _);
@@ -335,7 +339,9 @@ public class RecastMeshSystem : GameSystemBase
 
         smoothPath.Clear();
         smoothPath.Add(iterPos.ToStrideVector());
-        var visited = new List<long>();
+
+        Span<long> visited = stackalloc long[16];
+        int nvisited = 0;
 
         // Move towards target a small advancement at a time until target reached or
         // when ran out of memory to store the path.
@@ -343,14 +349,17 @@ public class RecastMeshSystem : GameSystemBase
         {
             // Find location to steer towards.
             if (!DtPathUtils.GetSteerTarget(navQuery, iterPos, targetPos, SLOP,
-                    polys, out var steerPos, out var steerPosFlag, out _))
+                    polys, polys.Count, out var steerPos, out var steerPosFlag, out var steerPosRef))
             {
                 break;
             }
 
-            bool endOfPath = (steerPosFlag & DtStraightPathFlags.DT_STRAIGHTPATH_END) != 0;
-            bool offMeshConnection = (steerPosFlag & DtStraightPathFlags.DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0;
-
+            bool endOfPath = (steerPosFlag & DtStraightPathFlags.DT_STRAIGHTPATH_END) != 0
+                ? true
+                : false;
+            bool offMeshConnection = (steerPosFlag & DtStraightPathFlags.DT_STRAIGHTPATH_OFFMESH_CONNECTION) != 0
+                ? true
+                : false;
             // Find movement delta.
             RcVec3f delta = RcVec3f.Subtract(steerPos, iterPos);
             float len = MathF.Sqrt(RcVec3f.Dot(delta, delta));
@@ -364,15 +373,15 @@ public class RecastMeshSystem : GameSystemBase
                 len = STEP_SIZE / len;
             }
 
-            RcVec3f moveTgt = RcVecUtils.Mad(iterPos, delta, len);
+            RcVec3f moveTgt = RcVec.Mad(iterPos, delta, len);
 
             // Move
-            navQuery.MoveAlongSurface(polys[0], iterPos, moveTgt, filter, out var result, ref visited);
+            navQuery.MoveAlongSurface(polys[0], iterPos, moveTgt, filter, out var result, visited, out nvisited, 16);
 
             iterPos = result;
 
-            polys = DtPathUtils.MergeCorridorStartMoved(polys, 0, 256, visited);
-            polys = DtPathUtils.FixupShortcuts(polys, navQuery);
+            pathIterPolyCount = DtPathUtils.MergeCorridorStartMoved(ref polys, pathIterPolyCount, MaxPolys, visited, nvisited);
+            pathIterPolyCount = DtPathUtils.FixupShortcuts(ref polys, pathIterPolyCount, navQuery);
 
             var status = navQuery.GetPolyHeight(polys[0], result, out var h);
             if (status.Succeeded())
