@@ -147,13 +147,14 @@ namespace Stride.Rendering
             if (oldValue == -1)
             {
                 var index = objectNodes.Add(new ObjectNode(renderObject));
-                ObjectNodeReferences.Add(renderObject.ObjectNode);
                 renderObject.ObjectNode = new ObjectNodeReference(index);
+                ObjectNodeReferences.Add(renderObject.ObjectNode);
             }
             else if (oldValue == -2) // Wait until whoever is inside the scope above finishes
             {
                 while (Volatile.Read(ref renderObject.ObjectNode.Index) == -2)
                 {
+                    // busy waiting on volatile renderObject.ObjectNode.Index
                 }
             }
 
