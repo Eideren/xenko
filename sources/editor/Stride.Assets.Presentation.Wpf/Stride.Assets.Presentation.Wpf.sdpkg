@@ -13,6 +13,8 @@ TemplateFolders:
         - !file Templates/Assets/Fonts/OfflineRasterizedSpriteFont.sdtpl
         - !file Templates/Assets/Fonts/RuntimeRasterizedSpriteFont.sdtpl
         - !file Templates/Assets/Fonts/SignedDistanceFieldSpriteFont.sdtpl
+        - !file Templates/Assets/Heightfield/HeightfieldAsset.sdtpl
+        - !file Templates/Assets/Heightfield/RunevisionTerrain.sdtpl
         - !file Templates/Assets/Materials/DefaultMaterial.sdtpl
         - !file Templates/Assets/Materials/DiffuseMaterial.sdtpl
         - !file Templates/Assets/Materials/PBRMetalnessMaterial.sdtpl
@@ -74,5 +76,6 @@ TemplateFolders:
         - !file Templates/Assets/Textures/NormalMapTexture.sdtpl
         - !file Templates/Assets/Textures/GrayscaleTexture.sdtpl
         - !file Templates/Assets/Textures/DefaultRenderTexture.sdtpl
+        - !file Templates/Assets/Textures/NormalFromHeightAsset.sdtpl
         - !file Templates/Assets/UI/Library.sdtpl
         - !file Templates/Assets/UI/Page.sdtpl
