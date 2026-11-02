@@ -16,6 +16,7 @@ using Stride.Core.Serialization.Contents;
 using Stride.Core.Assets.Visitors;
 using Stride.Core.Reflection;
 using Stride.Graphics;
+using Stride.Heightfield.Assets;
 using Stride.Rendering;
 using Stride.Rendering.Materials;
 
@@ -27,6 +28,10 @@ namespace Stride.Assets.Materials
         public override IEnumerable<BuildDependencyInfo> GetInputTypes(AssetItem assetItem)
         {
             yield return new BuildDependencyInfo(typeof(TextureAsset), typeof(AssetCompilationContext), BuildDependencyType.Runtime);
+            yield return new BuildDependencyInfo(typeof(NormalFromHeightAsset), typeof(AssetCompilationContext), BuildDependencyType.Runtime);
+            var type = Type.GetType("Stride.Heightfield.Assets.RunevisionTerrainAsset, Stride.Heightfield.Assets", false);
+            if (type != null)
+                yield return new BuildDependencyInfo(type, typeof(AssetCompilationContext), BuildDependencyType.Runtime);
             yield return new BuildDependencyInfo(typeof(MaterialAsset), typeof(AssetCompilationContext), BuildDependencyType.CompileAsset);
             yield return new BuildDependencyInfo(typeof(GameSettingsAsset), typeof(AssetCompilationContext), BuildDependencyType.CompileAsset);
         }
